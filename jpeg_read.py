@@ -5,8 +5,6 @@ from JPEG import *
 from tkinter import *
 # from numba import jit
 
-data = []
-
 
 def read_word(file):
     """ Read a 2 byte word from file """
