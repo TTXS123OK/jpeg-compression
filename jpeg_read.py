@@ -1,6 +1,9 @@
 import sys
+from memoize import *
 from math import *
 from JPEG import *
+from tkinter import *
+from numba import jit
 
 data = []
 
@@ -183,8 +186,8 @@ def read_mcu(jpeg):
     for i in range(jpeg.get_component_num()):
         mcu[i] = []
         # For each DU
-        sample_height, sample_weight = jpeg.get_component_size(i + 1)
-        for j in range(sample_height * sample_weight):
+        horizontal_factor, vertical_factor = jpeg.get_component_factor(i + 1)
+        for j in range(horizontal_factor * vertical_factor):
             DU = read_data_unit(jpeg, i + 1)
             if not jpeg.EOI:
                 mcu[i].append(DU)
@@ -300,11 +303,114 @@ def recover_dc(jpeg):
                     jpeg.dc[comp] = mcu[comp][du][0]
 
 
+def dequantilization(du, QT):
+    for i in range(len(du)):
+        du[i] *= QT[i]
+
+
+def inv_zigzag(du):
+    map = [[0, 1, 5, 6, 14, 15, 27, 28],
+           [2, 4, 7, 13, 16, 26, 29, 42],
+           [3, 8, 12, 17, 25, 30, 41, 43],
+           [9, 11, 18, 24, 31, 40, 44, 53],
+           [10, 19, 23, 32, 39, 45, 52, 54],
+           [20, 22, 33, 38, 46, 51, 55, 60],
+           [21, 34, 37, 47, 50, 56, 59, 61],
+           [35, 36, 48, 49, 57, 58, 62, 63]]
+    for i in range(8):
+        for j in range(8):
+            map[i][j] = du[map[i][j]]
+
+    return map
+
+
+def C(x):
+   if x==0:
+      return 1.0/sqrt(2.0)
+   else:
+      return 1.0
+
+
+# @jit
+def IDCT(du, idct_table):
+    idct = [[0 for j in range(8)]for i in range(8)]
+    for i in range(8):
+        for j in range(8):
+            for u in range(8):
+                for v in range(8):
+                    idct[i][j] += idct_table[u][i] * idct_table[v][j] * du[u][v]
+            idct[i][j] = int(idct[i][j])
+    return idct
+
+
+# @jit
+def combine_mcu(jpeg, mcu):
+    H = []
+    V = []
+    for i in range(jpeg.get_component_num()):
+        horizontal_factor, vertical_factor = jpeg.get_component_factor(i + 1)
+        H.append(horizontal_factor)
+        V.append(vertical_factor)
+    Hout = max(H)
+    Vout = max(V)
+    out = [[[] for x in range(8 * Hout)] for y in range(8 * Vout)]
+
+    for i in range(jpeg.get_component_num()):
+        nh = Hout // H[i]
+        nv = Vout // V[i]
+
+        for v in range(Vout):
+            for h in range(Hout):
+                for y in range(8):
+                    for x in range(8):
+                        out[y + v * 8][x + h * 8].append(mcu[i][h // nh + H[i] * v // nv][y // nv][x // nh])
+
+    return out
+
+
+def YCbCr2RGB(pixel):
+    Cred = 0.299
+    Cgreen = 0.587
+    Cblue = 0.114
+    Y = pixel[0]
+    Cb = pixel[1]
+    Cr = pixel[2]
+    R = max(min(int(Cr * (2 - 2 * Cred) + Y) + 128, 255), 0)
+    B = max(min(int(Cb * (2 - 2 * Cblue) + Y) + 128, 255), 0)
+    G = max(min(int(Y - 0.3441363 * Cb - 0.71413636 * Cr) + 128, 255), 0)
+    return R, G, B
+
+
+# @jit
+def jpeg2RGB():
+    RGB_MCU = jpeg.MCU
+    x_offset = 0
+    y_offset = 0
+    for mcu_index, mcu in enumerate(jpeg.MCU):
+        for comp in range(len(mcu)):
+            QT_number = jpeg.get_component_QT_number(comp + 1)
+            QT = jpeg.get_qtable(QT_number)
+            for du in range(len(mcu[comp])):
+                if mcu[comp][du]:
+                    dequantilization(mcu[comp][du], QT)
+                    du_matrix = inv_zigzag(mcu[comp][du])
+                    du_matrix = IDCT(du_matrix, idct_table)
+                    RGB_MCU[mcu_index][comp][du] = du_matrix
+        RGB_MCU[mcu_index] = combine_mcu(jpeg, RGB_MCU[mcu_index])
+        for y_mcu in range(len(RGB_MCU[mcu_index])):
+            for x_mcu in range(len(RGB_MCU[mcu_index][y_mcu])):
+                RGB[y_offset + y_mcu][x_offset + x_mcu] = tuple(RGB_MCU[mcu_index][y_mcu][x_mcu])
+        x_offset += len(RGB_MCU[mcu_index])
+        if x_offset >= weight:
+            x_offset = 0
+            y_offset += len(RGB_MCU[mcu_index][0])
+
+
 input_filename = 'warma.jpg'
 jpeg_file = open(input_filename, "rb")
 
 jpeg = JPEG()
-
+RGB = []
 in_char = read_byte(jpeg_file)
 
 while in_char:
@@ -350,3 +456,30 @@ while in_char:
 jpeg_file.close()
 
 recover_dc(jpeg)
+
+idct_table = [[(C(u) / 2.0 * cos(((2.0 * i + 1.0) * u * pi)/16.0)) for i in range(8)] for u in range(8)]
+
+
+height, weight = jpeg.get_size()
+RGB = [[(0, 0, 0) for x in range(weight + 32)] for y in range(height + 32)]
+jpeg2RGB()
+RGB = [[YCbCr2RGB(RGB[y][x]) for x in range(weight)] for y in range(height)]
+
+
+# @jit
+def display_image(data):
+    for i in range(0, len(data)):
+        for j in range(0, len(data[i])):
+            data[i][j] = "#%02x%02x%02x" % (data[i][j][0], data[i][j][1], data[i][j][2])
+
+    root = Tk()
+    im = PhotoImage(width=height, height=weight)
+
+    im.put(data)
+
+    w = Label(root, image=im)
+    w.grid()
+
+    root.mainloop()
+
+display_image(RGB)

@@ -26,7 +26,7 @@ class APP0:
 class DQT:
     segment_length = 0
     QT_information = 0
-    QT = [[], [], [], []]
+    QT = [[], []]
 
 
 class SOF0:
@@ -72,10 +72,20 @@ class JPEG:
     def get_component_num(self):
         return self.SOS.component_num
 
-    def get_component_size(self, id):
+    def get_component_factor(self, id):
         coefficient = self.SOF0.components[id]["sample_coefficient"]
         return coefficient >> 4, coefficient & 0xF
 
     def get_component_HT_number(self, id):
         HT_number = self.SOS.components[id]['HT_number']
         return HT_number >> 4, HT_number & 0xF
+
+    def get_qtable(self, id):
+        return self.DQT.QT[id]
+
+    def get_component_QT_number(self, id):
+        return self.SOF0.components[id]['QT_number']
+
+    def get_size(self):
+        return self.SOF0.height, self.SOF0.weight
+
