@@ -1,9 +1,11 @@
 import sys
-# from memoize import *
 from math import *
 from JPEG import *
 from tkinter import *
-# from numba import jit
+from numba import jit
+import numpy as np
+
+data = []
 
 
 def read_word(file):
@@ -105,11 +107,9 @@ def read_dht(DHT, file):
             huff_symbol.append(read_byte(file))
         i += huff_num
         if HT_type == 0:
-            DHT.HT_value_dc[HT_number] = huffman_map(
-                huff_length_count, huff_symbol)
+            DHT.HT_value_dc[HT_number] = huffman_map(huff_length_count, huff_symbol)
         else:
-            DHT.HT_value_ac[HT_number] = huffman_map(
-                huff_length_count, huff_symbol)
+            DHT.HT_value_ac[HT_number] = huffman_map(huff_length_count, huff_symbol)
 
 
 def huffman_map(huff_length_count, huff_symbol):
@@ -218,8 +218,7 @@ def read_data_unit(jpeg, comp_id):
             key |= val
             # print((bits, str(bin(key)).split('b')[1]))
             # If huffman code exists
-            key_str = '0' * (bits - len(str(bin(key)).split('b')
-                             [1])) + str(bin(key)).split('b')[1]
+            key_str = '0' * (bits - len(str(bin(key)).split('b')[1])) + str(bin(key)).split('b')[1]
             if (bits, key_str) in HT:
                 # print("yes")
                 key_len = HT[(bits, key_str)]
@@ -294,6 +293,7 @@ def calc_bits(len, val):
     return val
 
 
+# @jit
 def recover_dc(jpeg):
     """recover dc value using dc value from previous MCU"""
     for mcu in jpeg.MCU:
@@ -326,26 +326,22 @@ def inv_zigzag(du):
 
 
 def C(x):
-    if x == 0:
-        return 1.0/sqrt(2.0)
-    else:
-        return 1.0
+   if x==0:
+      return 1.0/sqrt(2.0)
+   else:
+      return 1.0
 
 
 # @jit
 def IDCT(du, idct_table):
-    idct = [[0 for j in range(8)]for i in range(8)]
-    for i in range(8):
-        for j in range(8):
-            for u in range(8):
-                for v in range(8):
-                    idct[i][j] += idct_table[u][i] * \
-                        idct_table[v][j] * du[u][v]
-            idct[i][j] = int(idct[i][j])
-    return idct
+    # idct = [[0 for j in range(8)]for i in range(8)]
+    idct = np.zeros([8, 8], dtype=float)
+    for u in range(8):
+        for v in range(8):
+            idct += idct_table[u][v] * du[u][v]
+    return np.around(idct)
 
 
-# @jit
 def combine_mcu(jpeg, mcu):
     H = []
     V = []
@@ -365,8 +361,7 @@ def combine_mcu(jpeg, mcu):
             for h in range(Hout):
                 for y in range(8):
                     for x in range(8):
-                        out[y + v * 8][x + h *
-                                       8].append(mcu[i][h // nh + H[i] * v // nv][y // nv][x // nh])
+                        out[y + v * 8][x + h * 8].append(mcu[i][h // nh + H[i] * v // nv][y // nv][x // nh])
 
     return out
 
@@ -402,8 +397,7 @@ def jpeg2RGB():
         RGB_MCU[mcu_index] = combine_mcu(jpeg, RGB_MCU[mcu_index])
         for y_mcu in range(len(RGB_MCU[mcu_index])):
             for x_mcu in range(len(RGB_MCU[mcu_index][y_mcu])):
-                RGB[y_offset + y_mcu][x_offset +
-                                      x_mcu] = tuple(RGB_MCU[mcu_index][y_mcu][x_mcu])
+                RGB[y_offset + y_mcu][x_offset + x_mcu] = tuple(RGB_MCU[mcu_index][y_mcu][x_mcu])
         x_offset += len(RGB_MCU[mcu_index])
         if x_offset >= weight:
             x_offset = 0
@@ -461,9 +455,8 @@ jpeg_file.close()
 
 recover_dc(jpeg)
 
-idct_table = [[(C(u) / 2.0 * cos(((2.0 * i + 1.0) * u * pi)/16.0))
-               for i in range(8)] for u in range(8)]
-
+# idct_table = [[(C(u) / 2.0 * cos(((2.0 * i + 1.0) * u * pi)/16.0)) for i in range(8)] for u in range(8)]
+idct_table = np.array([[[[(C(u) * C(v) / 4.0 * cos(((2.0 * i + 1.0) * u * pi)/16.0) * cos(((2.0 * j + 1.0) * v * pi) / 16.0)) for i in range(8)] for j in range(8)] for u in range(8)] for v in range(8)])
 
 height, weight = jpeg.get_size()
 RGB = [[(0, 0, 0) for x in range(weight + 32)] for y in range(height + 32)]
@@ -475,8 +468,7 @@ RGB = [[YCbCr2RGB(RGB[y][x]) for x in range(weight)] for y in range(height)]
 def display_image(data):
     for i in range(0, len(data)):
         for j in range(0, len(data[i])):
-            data[i][j] = "#%02x%02x%02x" % (
-                data[i][j][0], data[i][j][1], data[i][j][2])
+            data[i][j] = "#%02x%02x%02x" % (data[i][j][0], data[i][j][1], data[i][j][2])
 
     root = Tk()
     im = PhotoImage(width=height, height=weight)
@@ -487,6 +479,5 @@ def display_image(data):
     w.grid()
 
     root.mainloop()
-
 
 display_image(RGB)
