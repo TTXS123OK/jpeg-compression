@@ -26,7 +26,7 @@ class APP0:
 class DQT:
     segment_length = 0
     QT_information = 0
-    QT = [[], [], [], []]
+    QT = [[], []]
 
 
 class SOF0:
@@ -58,9 +58,34 @@ class JPEG:
     SOF0 = SOF0()
     DHT = DHT()
     SOS = SOS()
+    dc = []
+    EOI = False
+    data_stream = []
+    MCU = []
 
-    def get_dc_table(self):
-        return self.DHT.HT_value_dc
+    def get_dc_table(self, id):
+        return self.DHT.HT_value_dc[id]
 
-    def get_ac_table(self):
-        return self.DHT.HT_value_ac
+    def get_ac_table(self, id):
+        return self.DHT.HT_value_ac[id]
+
+    def get_component_num(self):
+        return self.SOS.component_num
+
+    def get_component_factor(self, id):
+        coefficient = self.SOF0.components[id]["sample_coefficient"]
+        return coefficient >> 4, coefficient & 0xF
+
+    def get_component_HT_number(self, id):
+        HT_number = self.SOS.components[id]['HT_number']
+        return HT_number >> 4, HT_number & 0xF
+
+    def get_qtable(self, id):
+        return self.DQT.QT[id]
+
+    def get_component_QT_number(self, id):
+        return self.SOF0.components[id]['QT_number']
+
+    def get_size(self):
+        return self.SOF0.height, self.SOF0.weight
+
