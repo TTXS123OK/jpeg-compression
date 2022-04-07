@@ -2,10 +2,36 @@ import sys
 from math import *
 from JPEG import *
 from tkinter import *
-from numba import jit
+from multiprocessing import Pool
 import numpy as np
 
-data = []
+import time
+from functools import wraps
+
+
+def memoize(function):
+    cache = {}
+    def decorated_function(*args):
+        try:
+            return cache[args]
+        except KeyError:
+            val = function(*args)
+            cache[args] = val
+            return val
+    return decorated_function
+
+
+def timefn(fn):
+    """计算性能的修饰器"""
+    @wraps(fn)
+    def measure_time(*args, **kwargs):
+        t1 = time.time()
+        result = fn(*args, **kwargs)
+        t2 = time.time()
+        print(f"@timefn: {fn.__name__} took {t2 - t1: .5f} s")
+        return result
+    return measure_time
+
 
 
 def read_word(file):
@@ -284,6 +310,7 @@ def get_bits(num, gen):
     return out
 
 
+@memoize
 def calc_bits(len, val):
     """ Calculate the value from the "additional" bits in the huffman data. """
     if val & (1 << len - 1):
@@ -293,7 +320,7 @@ def calc_bits(len, val):
     return val
 
 
-# @jit
+# @timefn
 def recover_dc(jpeg):
     """recover dc value using dc value from previous MCU"""
     for mcu in jpeg.MCU:
@@ -309,6 +336,7 @@ def dequantilization(du, QT):
         du[i] *= QT[i]
 
 
+# @timefn
 def inv_zigzag(du):
     map = [[0, 1, 5, 6, 14, 15, 27, 28],
            [2, 4, 7, 13, 16, 26, 29, 42],
@@ -332,7 +360,7 @@ def C(x):
       return 1.0
 
 
-# @jit
+# @timefn
 def IDCT(du, idct_table):
     # idct = [[0 for j in range(8)]for i in range(8)]
     idct = np.zeros([8, 8], dtype=float)
@@ -342,6 +370,7 @@ def IDCT(du, idct_table):
     return np.around(idct)
 
 
+# @timefn
 def combine_mcu(jpeg, mcu):
     H = []
     V = []
@@ -366,6 +395,7 @@ def combine_mcu(jpeg, mcu):
     return out
 
 
+@memoize
 def YCbCr2RGB(pixel):
     Cred = 0.299
     Cgreen = 0.587
@@ -379,29 +409,54 @@ def YCbCr2RGB(pixel):
     return R, G, B
 
 
-# @jit
+def process_mcu(mcu):
+    output = mcu
+    for comp in range(len(mcu)):
+        # print(comp + 1)
+        QT_number = jpeg.get_component_QT_number(comp + 1)
+        QT = jpeg.get_qtable(QT_number)
+        for du in range(len(mcu[comp])):
+            dequantilization(mcu[comp][du], QT)
+            du_matrix = inv_zigzag(mcu[comp][du])
+            du_matrix = IDCT(du_matrix, idct_table)
+            output[comp][du] = du_matrix
+    output = combine_mcu(jpeg, mcu)
+    return output
+
+
+@timefn
 def jpeg2RGB():
     RGB_MCU = jpeg.MCU
     x_offset = 0
     y_offset = 0
-    for mcu_index, mcu in enumerate(jpeg.MCU):
-        for comp in range(len(mcu)):
-            QT_number = jpeg.get_component_QT_number(comp + 1)
-            QT = jpeg.get_qtable(QT_number)
-            for du in range(len(mcu[comp])):
-                if mcu[comp][du]:
-                    dequantilization(mcu[comp][du], QT)
-                    du_matrix = inv_zigzag(mcu[comp][du])
-                    du_matrix = IDCT(du_matrix, idct_table)
-                    RGB_MCU[mcu_index][comp][du] = du_matrix
-        RGB_MCU[mcu_index] = combine_mcu(jpeg, RGB_MCU[mcu_index])
+    with Pool() as pool:
+        RGB_MCU = pool.map(process_mcu, RGB_MCU)
+    for mcu_index, mcu in enumerate(RGB_MCU):
         for y_mcu in range(len(RGB_MCU[mcu_index])):
             for x_mcu in range(len(RGB_MCU[mcu_index][y_mcu])):
                 RGB[y_offset + y_mcu][x_offset + x_mcu] = tuple(RGB_MCU[mcu_index][y_mcu][x_mcu])
+
         x_offset += len(RGB_MCU[mcu_index])
         if x_offset >= weight:
             x_offset = 0
             y_offset += len(RGB_MCU[mcu_index][0])
+
+
+# @timefn
+def display_image(data):
+    for i in range(0, len(data)):
+        for j in range(0, len(data[i])):
+            data[i][j] = "#%02x%02x%02x" % (data[i][j][0], data[i][j][1], data[i][j][2])
+
+    root = Tk()
+    im = PhotoImage(width=height, height=weight)
+
+    im.put(data)
+
+    w = Label(root, image=im)
+    w.grid()
+
+    root.mainloop()
 
 
 input_filename = 'warma.jpg'
@@ -409,6 +464,11 @@ jpeg_file = open(input_filename, "rb")
 
 jpeg = JPEG()
 RGB = []
+idct_table = np.array([[[[(C(u) * C(v) / 4.0 * cos(((2.0 * i + 1.0) * u * pi) / 16.0) * cos(
+    ((2.0 * j + 1.0) * v * pi) / 16.0)) for i in range(8)] for j in range(8)] for u in range(8)] for v in range(8)])
+
+
+
 in_char = read_byte(jpeg_file)
 
 while in_char:
@@ -453,31 +513,11 @@ while in_char:
 
 jpeg_file.close()
 
-recover_dc(jpeg)
 
-# idct_table = [[(C(u) / 2.0 * cos(((2.0 * i + 1.0) * u * pi)/16.0)) for i in range(8)] for u in range(8)]
-idct_table = np.array([[[[(C(u) * C(v) / 4.0 * cos(((2.0 * i + 1.0) * u * pi)/16.0) * cos(((2.0 * j + 1.0) * v * pi) / 16.0)) for i in range(8)] for j in range(8)] for u in range(8)] for v in range(8)])
-
-height, weight = jpeg.get_size()
-RGB = [[(0, 0, 0) for x in range(weight + 32)] for y in range(height + 32)]
-jpeg2RGB()
-RGB = [[YCbCr2RGB(RGB[y][x]) for x in range(weight)] for y in range(height)]
-
-
-# @jit
-def display_image(data):
-    for i in range(0, len(data)):
-        for j in range(0, len(data[i])):
-            data[i][j] = "#%02x%02x%02x" % (data[i][j][0], data[i][j][1], data[i][j][2])
-
-    root = Tk()
-    im = PhotoImage(width=height, height=weight)
-
-    im.put(data)
-
-    w = Label(root, image=im)
-    w.grid()
-
-    root.mainloop()
-
-display_image(RGB)
+if __name__ == '__main__':
+    recover_dc(jpeg)
+    height, weight = jpeg.get_size()
+    RGB = [[(0, 0, 0) for x in range(weight + 32)] for y in range(height + 32)]
+    jpeg2RGB()
+    RGB = [[YCbCr2RGB(RGB[y][x]) for x in range(weight)] for y in range(height)]
+    display_image(RGB)
