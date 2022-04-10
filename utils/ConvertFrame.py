@@ -1,3 +1,4 @@
+import os
 from utils.ImgFrame import ImgFrame
 
 from tkinter import Frame
@@ -8,8 +9,8 @@ class ConvertFrame:
         self.__frame = Frame(parent_frame)
         self.__parent_frame = parent_frame
         self.bmp_frame = ImgFrame(self.__frame, img_type='bmp', show_image_path=True)
-        self.arrow = ImgFrame(self.__frame, img_path='../assets/arrow.png')
-        self.jpeg_frame = ImgFrame(self.__frame, img_path='../tmp/tmp.jpeg')
+        self.arrow = ImgFrame(self.__frame, img_path=os.path.join(os.getcwd(), 'assets/arrow.png'))
+        self.jpeg_frame = ImgFrame(self.__frame, img_path=os.path.join(os.getcwd(), 'tmp/tmp.jpeg'))
 
     def grid(self, row: int, column: int, columnspan: int, state: str):
         if state == 'UNLOADED':

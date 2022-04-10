@@ -1,4 +1,4 @@
-from MVCModel import Model, View, Control
+from proj.MVCModel import Model, View, Control
 
 if __name__ == "__main__":
 

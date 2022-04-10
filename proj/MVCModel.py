@@ -55,7 +55,7 @@ class Model:
         self.update_view()
 
     def compress(self):
-        tmp_path = '../tmp/tmp.jpeg'
+        tmp_path = os.path.join(os.getcwd(), 'tmp/tmp.jpeg')
         self.set_state(Model.State.COMPRESSING)
         # self.update_view()
         time.sleep(1)
