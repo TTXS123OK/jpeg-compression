@@ -1,4 +1,4 @@
-from proj.MVCModel import Model, View, Control
+from utils.MVCModel import Model, View, Control
 
 if __name__ == "__main__":
 
@@ -12,3 +12,4 @@ if __name__ == "__main__":
     control.set_model(model)
 
     view.update()
+    view.show()

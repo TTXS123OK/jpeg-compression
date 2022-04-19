@@ -3,9 +3,14 @@ This is my final project of the course Multimedia Technology, cooperate with Yic
 
 ### Run
 ```shell
-cd proj
-python3 main.py
+python3 -m proj.main
 ```
 
+#### run in pycharm
+open configuration
+1. Script path: proj/main.py
+2. Environment/Working directory: simplified-jpeg-demo
+
 ### Todo
-* save function
+* compressing to jpeg
+* jpeg decompressing
