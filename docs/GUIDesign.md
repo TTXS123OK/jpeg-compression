@@ -16,3 +16,8 @@
 * View: update according the state of model and call Control when event triggered
 * Control: do some control function to manipulate model
 
+
+`bit_reader -> generator[Union[int, jpeg_read_command]]`
+
+`jpeg.read` call `bit_reader`
+

@@ -47,25 +47,32 @@
 
 
 
-### todo
-
-* 掌握 jpeg 存储格式
-* wxPython 使用
-* 搭框架
-
-
-
-
-
 ### reference
 
-jpeg格式：https://www.cnblogs.com/P201821460033/p/13658489.html
+Useful Jpeg Docs
 
-详尽版：https://blog.csdn.net/yun_hen/article/details/78135122
+* exiv2: https://www.cnblogs.com/P201821460033/p/13658489.html
+* Oracle: https://juejin.cn/post/6844904008943927310
+* FileFormat: https://docs.fileformat.com/image/jpeg/
 
-jpeg_read: https://github.com/enmasse/jpeg_read/blob/master/jpeg_read.py
 
-jpeg huffman code:https://zhuanlan.zhihu.com/p/72044095
+
+Jpeg Blogs
+
+* ==简书 jpeg 文件解码==: https://www.jianshu.com/p/c4ab7f92d0e1
+
+* 稀土掘金 jpeg 格式详解: https://juejin.cn/post/6844904008943927310
+* 博客园 jpeg 格式详解: https://www.cnblogs.com/P201821460033/p/13658489.html
+
+* csdn jpeg 格式详解: https://blog.csdn.net/yun_hen/article/details/78135122
+
+* jpeg huffman code: https://zhuanlan.zhihu.com/p/72044095
+
+
+
+Code Reference
+
+* https://github.com/enmasse/jpeg_read/blob/master/jpeg_read.py
 
 jpeg 解码：https://www.jianshu.com/p/c4ab7f92d0e1
 
