@@ -11,6 +11,3 @@ def read_word(file: BinaryIO) -> int:
     out = file.read(2)
     res = out[0] << 8 | out[1]
     return res
-
-
-

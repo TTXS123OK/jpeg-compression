@@ -1,6 +1,10 @@
+import numpy as np
+
 from utils.ReadUtils import *
 from utils.JPEGUtils import *
 from typing import BinaryIO
+from math import ceil
+import matplotlib.pyplot as plt
 
 
 class APP0:
@@ -247,7 +251,7 @@ class JPEG:
     def get_qtable(self, idx: int):
         return self.dqt.QT[idx]
 
-    def get_component_QT_number(self, idx: int):
+    def get_component_qt_number(self, idx: int):
         return self.sof0.components[idx]['QT_number']
 
     def get_size(self) -> tuple[int, int]:
@@ -274,8 +278,6 @@ class JPEG:
                         return
                     else:
                         raise TypeError("Unknown jpeg read command")
-                # else:
-                #     print(cmd, end=' ')
         except StopIteration:
             return
 
@@ -285,23 +287,29 @@ class JPEG:
             self.mcu_list.append(mcu)
             mcu = self.read_mcu(data_stream)
 
-    def read_mcu(self, data_stream: Generator[Union[int, JpegCommand], None, None]) -> Union[list[list[int]], None]:
-        mcu = list()
+    def read_mcu(self, data_stream: Generator[Union[int, JpegCommand], None, None]) -> Union[list[list[list[int]]], None]:
+        mcu = []
         # for each component
         for i in range(self.get_component_num()):
+            mcu_comp = []
             comp_id = i + 1
             horizontal_factor, vertical_factor = jpeg.get_component_factor(comp_id)
             for j in range(horizontal_factor * vertical_factor):
                 data_unit = self.read_data_unit(data_stream, comp_id)
                 if data_unit is None:
-                    if len(mcu) == 0:
+                    if i == 0 and j == 0:
                         return None
                     else:
                         raise AssertionError("Read MCU failed")
-                mcu.append(data_unit)
+                mcu_comp.append(data_unit)
+            mcu.append(mcu_comp)
         return mcu
 
-    def read_data_unit(self, data_stream: Generator[Union[int, JpegCommand], None, None], comp_id: int) -> Union[list[int], None]:
+    def read_data_unit(
+            self,
+            data_stream: Generator[Union[int, JpegCommand], None, None],
+            comp_id: int
+    ) -> Union[list[int], None]:
         data_unit = []
         HT_dc_number, HT_ac_number = self.get_component_HT_number(comp_id)
         dc_huff_table = self.get_dc_table(HT_dc_number)
@@ -358,8 +366,57 @@ class JPEG:
                     amplitude = read_amplitude(size, data_stream)
                     data_unit.append(amplitude)
 
-        print(data_unit)
         return data_unit
+
+    def decompress_to_rgb(self) -> list[list[list[int]]]:
+        ycbcr_mcu_list = self.mcu_list.copy()
+        recover_dc(ycbcr_mcu_list)
+        for mcu in ycbcr_mcu_list:
+            for idx, comp in enumerate(mcu):
+                comp_id = idx + 1
+                qt_number = self.get_component_qt_number(comp_id)
+                qtable = self.get_qtable(qt_number)
+                for i in range(len(comp)):
+                    dequantization(comp[i], qtable)
+                    comp[i] = inv_zigzag(comp[i])
+                    comp[i] = IDCT(comp[i], idct_table)
+
+        height, width = self.get_size()
+        ycbcr = [[[] for y in range(width)] for x in range(height)]
+        component_num = self.get_component_num()
+        mcu_h, mcu_w = 0, 0
+        for k in range(component_num):
+            comp_id = k + 1
+            horizontal_factor, vertical_factor = self.get_component_factor(comp_id)
+            mcu_h = max(mcu_h, vertical_factor * 8)
+            mcu_w = max(mcu_w, horizontal_factor * 8)
+        for k in range(component_num):
+            comp_id = k + 1
+            horizontal_factor, vertical_factor = self.get_component_factor(comp_id)
+            mcu_cnt_each_row = ceil(width / mcu_w)
+            for i in range(height):
+                y = i // mcu_h
+                y_offset_in_mcu = i % mcu_h
+                y_offset_in_du = (y_offset_in_mcu % (mcu_h // vertical_factor)) // (mcu_h // (8 * vertical_factor))
+                for j in range(width):
+                    x = j // mcu_w
+                    x_offset_in_mcu = j % mcu_w
+                    x_offset_in_du = (x_offset_in_mcu % (mcu_h // horizontal_factor)) // (mcu_w // (8 * horizontal_factor))
+                    mcu_idx = x + y * mcu_cnt_each_row
+                    data_unit_idx = y_offset_in_mcu // (mcu_h // horizontal_factor) * horizontal_factor \
+                                    + x_offset_in_mcu // (mcu_w // vertical_factor)
+                    ycbcr[i][j].append(ycbcr_mcu_list[mcu_idx][k][data_unit_idx][y_offset_in_du][x_offset_in_du])
+
+        rgb = [[] for x in range(height)]
+        for i in range(height):
+            for j in range(width):
+                rgb[i].append(YCbCr2RGB(ycbcr[i][j]))
+        return rgb
+
+
+def displayImage(image):
+    plt.imshow(image)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -367,11 +424,5 @@ if __name__ == '__main__':
     file_path = "../../backup/simplified-jpeg-demo/assets/warma.jpg"
     with open(file_path, 'rb') as f:
         jpeg.read(f)
-    # print(jpeg.dht)
-    # print(jpeg.dht)
-    # try:
-    #     while True:
-    #         print(jpeg.data_stream.__next__(), end=' ')
-    # except StopIteration:
-    #     print("end iteration")
-    #     pass
+    rgb = jpeg.decompress_to_rgb()
+    displayImage(rgb)
