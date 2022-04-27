@@ -421,7 +421,7 @@ def displayImage(image):
 
 if __name__ == '__main__':
     jpeg = JPEG()
-    file_path = "../../backup/simplified-jpeg-demo/assets/warma.jpg"
+    file_path = "../simplified-jpeg-demo/assets/warma.jpg"
     with open(file_path, 'rb') as f:
         jpeg.read(f)
     rgb = jpeg.decompress_to_rgb()

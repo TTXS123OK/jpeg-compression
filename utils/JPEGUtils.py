@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Generator, Union
-from ReadUtils import *
+from utils.ReadUtils import *
 
 import numpy as np
 from math import sqrt, cos, pi, fabs
