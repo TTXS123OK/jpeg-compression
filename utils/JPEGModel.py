@@ -402,7 +402,8 @@ class JPEG:
             return
 
     def read_mcu_list(self, data_stream: Generator[Union[int, JpegCommand], None, None]):
-        mcu_num = ceil(self.sof0.height / 16) * ceil(self.sof0.width)
+        self.mcu_list = []
+        mcu_num = ceil(self.sof0.height / 16) * ceil(self.sof0.width / 16)
         while len(self.mcu_list) < mcu_num:
             mcu = self.read_mcu(data_stream)
             if mcu is not None:
@@ -702,7 +703,7 @@ class JPEG:
                                 writer.write(Y_ac_map[symbol])
                             else:
                                 writer.write(CbCr_ac_map[symbol])
-                            writer.write(get_complement_code(data_unit[0]))
+                            writer.write(get_complement_code(amplitude))
                         i += 1
                     if last_nonzero_idx < 64:
                         symbol = 0
@@ -725,10 +726,28 @@ if __name__ == '__main__':
     path1 = "assets/red.jpg"
     path2 = "assets/warma.jpg"
     path3 = "assets/tmp.jpeg"
+    with open(path2, 'rb') as f:
+        jpeg.read(f)
+
+    rgb1 = jpeg.decompress_to_rgb()  # this will change data_unit into 8 x 8
+    displayImage(rgb1)
+    jpeg.compress_from_rgb(rgb1)  # recover data_unit to list of 64
+
+    with open(path3, 'wb') as f2:
+        jpeg.write(f2)
     with open(path3, 'rb') as f:
         jpeg.read(f)
-    print(jpeg)
-    print(jpeg.mcu_list)
+
+    rgb1 = jpeg.decompress_to_rgb()  # this will change data_unit into 8 x 8
+    displayImage(rgb1)
+
+    # jpeg.compress_from_rgb(rgb1)  # recover data_unit to list of 64
+    # rgb2 = jpeg.decompress_to_rgb()  # this will change data_unit into 8 x 8
+    # displayImage(rgb2)
+
+    # print(jpeg)
+    # print(jpeg.mcu_list)
+
     # rgb1 = jpeg.decompress_to_rgb()
     # jpeg.compress_from_rgb(rgb1)
     # rgb2 = jpeg.decompress_to_rgb()
@@ -736,5 +755,5 @@ if __name__ == '__main__':
     # print(rgb1[0])
     # print(rgb2[0])
 
-    with open(path3, 'wb') as f2:
-        jpeg.write(f2)
+    # with open(path3, 'wb') as f2:
+    #     jpeg.write(f2)

@@ -33,6 +33,8 @@ class BitWriter:
             self.buf_size += 1
             if self.buf_size == 8:
                 self.file.write(bytes([self.buf]))
+                if self.buf == 0xff:
+                    self.file.write(bytes([0]))
                 self.buf = 0
                 self.buf_size = 0
 
