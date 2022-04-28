@@ -69,6 +69,7 @@ Jpeg Blogs
 * csdn jpeg 格式详解: https://blog.csdn.net/yun_hen/article/details/78135122
 
 * jpeg huffman code: https://zhuanlan.zhihu.com/p/72044095
+* RGB YCbcr Convertion: https://blog.csdn.net/ymlbright/article/details/44181399
 
 
 

@@ -1,4 +1,4 @@
-from typing import BinaryIO
+from typing import BinaryIO, Any
 
 
 def read_byte(file: BinaryIO) -> int:

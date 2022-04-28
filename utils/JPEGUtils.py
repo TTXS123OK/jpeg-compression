@@ -1,9 +1,10 @@
+import heapq
 from enum import Enum
 from typing import Generator, Union
 from utils.ReadUtils import *
 
 import numpy as np
-from math import sqrt, cos, pi, fabs
+from math import sqrt, cos, pi
 
 
 class JpegCommand(Enum):
@@ -46,11 +47,11 @@ def jpeg_bit_reader(file: BinaryIO) -> Generator[Union[int, JpegCommand], None, 
                 if cmd == 0xe0:
                     yield JpegCommand.read_app0
                 else:  # don't support other app types
-                    raise TypeError("Don't support this app type yet: %s" % ("APP" + str(cmd-0xe0)))
+                    raise TypeError("Don't support this app type yet: %s" % ("APP" + str(cmd - 0xe0)))
             elif cmd == 0xfe:
                 raise TypeError("Don't support COM yet")
             else:
-                raise TypeError("Unknown command")
+                raise TypeError("Unknown command: 0x%x" % cmd)
         else:
             for i in range(7, -1, -1):
                 yield (signal >> i) & 0x01
@@ -60,9 +61,12 @@ def jpeg_bit_reader(file: BinaryIO) -> Generator[Union[int, JpegCommand], None, 
 
 def read_amplitude(size: int, data_stream: Generator[Union[int, JpegCommand], None, None]) -> int:
     amplitude = 0
-    for i in range(size):
-        amplitude <<= 1
-        amplitude |= data_stream.__next__()
+    try:
+        for i in range(size):
+            amplitude <<= 1
+            amplitude |= data_stream.__next__()
+    except Exception:
+        raise TypeError("Error in read_amplitude")
     # calculate the genuine value
     # for example: 001 -> -6, 101 -> 5
     if amplitude & (1 << (size - 1)):
@@ -77,12 +81,13 @@ def YCbCr2RGB(pixel: list[int, int, int]) -> list[int, int, int]:
     Cred = 0.299
     Cgreen = 0.587
     Cblue = 0.114
+
     R = Cr * (2 - 2 * Cred) + Y + 128
-    R = max(min(round(R), 255), 0)
     B = Cb * (2 - 2 * Cblue) + Y + 128
+    G = (Y - B * Cblue - R * Cred + 128) / Cgreen
+
+    R = max(min(round(R), 255), 0)
     B = max(min(round(B), 255), 0)
-    # G = (Y - B * Cblue - R * Cred) / Cgreen
-    G = Y - 0.3441363 * Cb - 0.71413636 * Cr + 128
     G = max(min(round(G), 255), 0)
     return [R, G, B]
 
@@ -92,26 +97,10 @@ def RGB2YCbCr(pixel: list[int, int, int]) -> list[int, int, int]:
     Cred = 0.299
     Cgreen = 0.587
     Cblue = 0.114
-    Y = Cred * R + Cgreen * G + Cblue * B
-    Cb = (B - Y) / (2 - 2 * Cblue)
-    Cr = (R - Y) / (2 - 2 * Cred)
-    return [round(fabs(Y)), round(fabs(Cb)), round(fabs(Cr))]
-
-# def YCbCr2RGB(pixel: list[int, int, int]) -> list[int, int, int]:
-#     Y_ = (Y / 256) ** (1/2.2) * 256
-#     R = 0.00456621 * (Y_ - 16) + 0 * (Cb - 128) + 0.00625893 * (Cr - 128)
-#     G = 0.00456621 * (Y_ - 16) + -0.00153632 * (Cb - 128) + -0.00318811 * (Cr - 128)
-#     B = 0.00456621 * (Y_ - 16) + 0 * (Cb - 128) + 0.00625893 * (Cr - 128)
-#     return [round(R * 256), round(G * 256), round(B * 256)]
-#
-#
-# def RGB2YCbCr(pixel: list[int, int, int]) -> list[int, int, int]:
-#     R, G, B = pixel[0] / 256, pixel[1] / 256, pixel[2] / 256
-#     R_, G_, B_ = R ** (1/2.2), G ** (1/2.2), B ** (1/2.2),
-#     Y = 65.481 * R_ + 128.553 * G_ + 24.966 * B_ + 16
-#     Cb = -37.797 * R_ + -74.203 * G_ + 112 * B_ + 128
-#     Cr = 112 * R_ + -93.786 * G_ + -18.214 * B_ + 128
-#     return [round(Y), round(Cb), round(Cr)]
+    Y = Cred * R + Cgreen * G + Cblue * B - 128
+    Cb = (B - Y - 128) / (2 - 2 * Cblue)
+    Cr = (R - Y - 128) / (2 - 2 * Cred)
+    return [round(Y), round(Cb), round(Cr)]
 
 
 def C(x):
@@ -120,15 +109,32 @@ def C(x):
     else:
         return 1.0
 
+
+dct_table = np.array(
+    [
+        [
+            [
+                [
+                    (
+                            C(u) * C(v) / 4.0
+                            * cos(((2.0 * i + 1.0) * u * pi) / 16.0)
+                            * cos(((2.0 * j + 1.0) * v * pi) / 16.0)
+                    ) for u in range(8)
+                ] for v in range(8)
+            ] for i in range(8)
+        ] for j in range(8)
+    ]
+)
+
 idct_table = np.array(
     [
         [
             [
                 [
                     (
-                        C(u) * C(v) / 4.0
-                        * cos(((2.0 * i + 1.0) * u * pi) / 16.0)
-                        * cos(((2.0 * j + 1.0) * v * pi) / 16.0)
+                            C(u) * C(v) / 4.0
+                            * cos(((2.0 * i + 1.0) * u * pi) / 16.0)
+                            * cos(((2.0 * j + 1.0) * v * pi) / 16.0)
                     ) for i in range(8)
                 ] for j in range(8)
             ] for u in range(8)
@@ -137,7 +143,14 @@ idct_table = np.array(
 )
 
 
-# data_unit: 2d int array, idct_table: 4d float array, return: 2d in array
+def DCT(data_unit: list[list[int]], dct_table: np.ndarray) -> list[list[int]]:
+    dct = np.zeros([8, 8], dtype=float)
+    for u in range(8):
+        for v in range(8):
+            dct += dct_table[u][v] * data_unit[u][v]
+    return np.around(dct).tolist()
+
+
 def IDCT(data_unit: list[list[int]], idct_table: np.ndarray) -> list[list[int]]:
     idct = np.zeros([8, 8], dtype=float)
     for u in range(8):
@@ -176,7 +189,7 @@ def inv_zigzag(data_unit: list[int]) -> list[list[int]]:
 
 def quantization(data_unit: list[int], qtable: list[int]) -> None:
     for i in range(len(data_unit)):
-        data_unit[i] *= qtable[i]
+        data_unit[i] = round(data_unit[i] / qtable[i])
 
 
 def dequantization(data_unit: list[int], qtable: list[int]) -> None:
@@ -193,10 +206,170 @@ def recover_dc(mcu_list: list[list[list[list[int]]]]):
                 pre_sum = data_unit[0]
 
 
+def dpcm_on_dc(mcu_list: list[list[list[list[int]]]]):
+    for comp_idx in range(3):
+        pre = 0
+        for mcu in mcu_list:
+            for data_unit in mcu[comp_idx]:
+                pre, data_unit[0] = data_unit[0], data_unit[0] - pre
+
+
+# input: mcu_list
+# output: list of huffman tables
+# huffman tables: [symbol_cnt_for_each_len: list[int], symbols[int]]
+def create_dc_huffman_tables(mcu_list: list[list[list[list[int]]]]) -> list[list[list[int], list[int]]]:
+    # create 2 freq_dict, one for Y, and one for Cb, Cr
+    freq_dict_list = [{}, {}]
+    for mcu in mcu_list:
+        for idx, comp in enumerate(mcu):
+            if idx == 0:  # for Y layer
+                freq_dict = freq_dict_list[0]
+            else:  # for Cb and Cr
+                freq_dict = freq_dict_list[1]
+            for data_unit in comp:
+                symbol = 0 if data_unit[0] == 0 else get_value_bit_len(data_unit[0])
+                freq_dict[symbol] = freq_dict[symbol] + 1 if symbol in freq_dict else 1
+
+    return create_huffman_tables_by_freq_dicts(freq_dict_list)
+
+
+# input: mcu_list
+# output: list of huffman tables
+# huffman tables: [symbol_cnt_for_each_len: list[int], symbols[int]]
+def create_ac_huffman_tables(mcu_list: list[list[list[list[int]]]]) -> list[list[list[int], list[int]]]:
+    # create 2 freq_dict, one for Y, and one for Cb, Cr
+    freq_dict_list = [{}, {}]
+    for mcu in mcu_list:
+        for idx, comp in enumerate(mcu):
+            if idx == 0:  # for Y layer
+                freq_dict = freq_dict_list[0]
+            else:  # for Cb and Cr
+                freq_dict = freq_dict_list[1]
+            for data_unit in comp:
+                idx = 1
+                last_nonzero_idx = 64
+                while last_nonzero_idx > 0 and data_unit[last_nonzero_idx-1] == 0:
+                    last_nonzero_idx -= 1
+                zero_cnt = 0
+                while idx < last_nonzero_idx:
+                    if data_unit[idx] == 0:
+                        zero_cnt += 1
+                        if zero_cnt == 16:  # special case
+                            symbol = 0xf0
+                            freq_dict[symbol] = freq_dict[symbol] + 1 if symbol in freq_dict else 1
+                            zero_cnt = 0
+                    else:
+                        amplitude = data_unit[idx]
+                        size = get_value_bit_len(amplitude)
+                        symbol = zero_cnt << 4 | size
+                        freq_dict[symbol] = freq_dict[symbol] + 1 if symbol in freq_dict else 1
+                        zero_cnt = 0
+                    idx += 1
+                if last_nonzero_idx != 64:
+                    symbol = 0
+                    freq_dict[symbol] = freq_dict[symbol] + 1 if symbol in freq_dict else 1
+    return create_huffman_tables_by_freq_dicts(freq_dict_list)
+
+
+# input: freq_dict_list
+# output: list of huffman tables
+# huffman tables: [symbol_cnt_for_each_len: list[int], symbols[int]]
+def create_huffman_tables_by_freq_dicts(freq_dict_list: list[dict]) -> list[list[list[int], list[int]]]:
+    huffman_tables = []
+    for freq_dict in freq_dict_list:
+        h = []
+        heapq.heapify(h)
+        for symbol, freq in freq_dict.items():
+            heapq.heappush(h, (freq, [(symbol, 0)]))  # tuple(freq, list[tuple(symbol, coding_length)])
+
+        if len(h) == 1:  # if there is only one symbol to code, still need 1 bit
+            h[0] = (h[0][0], [(h[0][1][0][0], h[0][1][0][1] + 1)])
+
+        while len(h) > 1:
+            t1 = heapq.heappop(h)
+            t2 = heapq.heappop(h)
+            symbol_list = []
+            for sym_list in t1[1]:
+                symbol_list.append((sym_list[0], sym_list[1] + 1))
+            for sym_list in t2[1]:
+                symbol_list.append((sym_list[0], sym_list[1] + 1))
+            new_freq = t1[0] + t2[0]
+            heapq.heappush(h, (new_freq, symbol_list))
+
+        symbol_list = h[0][1]
+        symbol_list = sorted(symbol_list, key=lambda x: x[1])
+        symbols = []
+        symbol_cnt_for_each_len = [0 for i in range(16)]
+        for symbol, coding_len in symbol_list:
+            symbols.append(symbol)
+            symbol_cnt_for_each_len[coding_len-1] += 1
+        huffman_tables.append([symbol_cnt_for_each_len, symbols])
+    return huffman_tables
+
+
+# complement code to represent value, return length
+def get_value_bit_len(num: int) -> int:
+    return len(get_complement_code(num))
+
+
+def get_complement_code(num: int) -> str:
+    flag = 1 if num > 0 else -1
+    if num < 0:
+        num = -num
+    res = ''
+    while num != 0:
+        if flag == 1 and num & 0x01 == 0x01:
+            res = '1' + res
+        elif flag == -1 and num & 0x01 == 0x01:
+            res = '0' + res
+        elif flag == 1 and num & 0x01 == 0:
+            res = '0' + res
+        else:  # flag == -1 and num & 0x01 == 0
+            res = '1' + res
+        num >>= 1
+    return res
+
+
+def map_huff_symbol(huff_symbol_cnt_for_each_len: list[int], huff_symbol: list[int]) \
+        -> dict[tuple[int, str], int]:
+    cur_symbol_idx = 0
+    table = {}
+    cur_code = 0
+    for i in range(len(huff_symbol_cnt_for_each_len)):
+        cnt = huff_symbol_cnt_for_each_len[i]
+        n_bits = i + 1
+        for _ in range(cnt):
+            code_str = str(bin(cur_code)).split('b')[1]
+            huff_code = (n_bits, '0' * (n_bits - len(code_str)) + code_str)
+            table[huff_code] = huff_symbol[cur_symbol_idx]
+            cur_code += 1
+            cur_symbol_idx += 1
+        cur_code <<= 1
+    return table
+
+
+def map_symbol_to_coding(huff_symbol_cnt_for_each_len: list[int], huff_symbol: list[int]) -> dict[int, str]:
+    cur_symbol_idx = 0
+    table = {}
+    cur_code = 0
+    for i in range(len(huff_symbol_cnt_for_each_len)):
+        cnt = huff_symbol_cnt_for_each_len[i]
+        n_bits = i + 1
+        for _ in range(cnt):
+            code_str = str(bin(cur_code)).split('b')[1]
+            huff_code = '0' * (n_bits - len(code_str)) + code_str
+            table[huff_symbol[cur_symbol_idx]] = huff_code
+            cur_code += 1
+            cur_symbol_idx += 1
+        cur_code <<= 1
+    return table
+
+
 if __name__ == "__main__":
-    Y, Cb, Cr = -37, -31, 104
+    Y, Cb, Cr = [103.0, -14.0, 5.0]
     R, G, B = YCbCr2RGB([Y, Cb, Cr])
     print(R, G, B)
+    print(RGB2YCbCr([R, G, B]))
     # import random
     # Y_max, Y_min, Cb_max, Cb_min, Cr_max, Cr_min = 0, 1000, 0, 1000, 0, 1000
     # for i in range(10000):
