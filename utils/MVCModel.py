@@ -3,9 +3,11 @@ from enum import Enum
 
 from tkinter import *
 from PIL import Image
+import numpy as np
 
 from tkinter.filedialog import askopenfile, asksaveasfilename
 from utils.ConvertFrame import ConvertFrame
+from utils.JPEGModel import JPEG
 
 
 class View:
@@ -54,7 +56,12 @@ class Model:
         self.update_view()
 
     def compress(self) -> None:
-        self.img.save(self.tmp_file_path)
+        self.view.jpeg = JPEG()
+        height, width = self.img.size
+        rgb = list(np.array(self.img.getdata()).reshape((height, width, 3)))
+        self.view.jpeg.compress_from_rgb(rgb)
+        with open(self.tmp_file_path, "wb") as f:
+            self.view.jpeg.write(f)
         self.set_state(Model.State.COMPRESSED)
         self.compress_ratio = "%.6f" % (os.path.getsize(self.bmp_path) / os.path.getsize(self.tmp_file_path))
         self.update_view()
@@ -103,6 +110,8 @@ class View:
     def __init__(self, model: Model = None, control: Control = None):
         self.model = model
         self.control = control
+
+        self.jpeg = None
 
         self.main_frame = Tk()
         self.main_frame.title("BMP to JPEG Converter")

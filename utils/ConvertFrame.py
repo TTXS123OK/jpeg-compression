@@ -1,6 +1,9 @@
 from typing import Union
 from tkinter import *
 from PIL import Image, ImageTk
+import numpy as np
+
+from utils.JPEGModel import JPEG
 
 
 class ConvertFrame:
@@ -51,8 +54,13 @@ class ConvertFrame:
         elif state == 'LOADED':
             self.bmp_frame.grid(row=1, column=1)
         else:  # state == 'COMPRESSED'
-            self.jpeg_img = ImageTk.PhotoImage(Image.open(self.jpeg_path))
-            self.jpeg_frame['image'] = self.jpeg_img
+            jpeg = JPEG()
+            with open(self.jpeg_path, "rb") as f:
+                jpeg.read(f)
+            rgb = jpeg.decompress_to_rgb()
+            arr = np.asarray(rgb, dtype=np.uint8)
+            self.jpeg_img = Image.fromarray(arr, 'RGB')
+            self.jpeg_frame['image'] = ImageTk.PhotoImage(self.jpeg_img)
             self.bmp_frame.grid(row=1, column=1)
             self.arrow_frame.grid(row=1, column=2)
             self.jpeg_frame.grid(row=1, column=3)

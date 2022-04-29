@@ -423,7 +423,7 @@ class JPEG:
         for i in range(self.get_component_num()):
             mcu_comp = []
             comp_id = i + 1
-            horizontal_factor, vertical_factor = jpeg.get_component_factor(comp_id)
+            horizontal_factor, vertical_factor = self.get_component_factor(comp_id)
             for j in range(horizontal_factor * vertical_factor):
                 data_unit = self.read_data_unit(data_stream, comp_id)
                 if data_unit is None:
@@ -545,10 +545,18 @@ class JPEG:
                 rgb[i].append(YCbCr2RGB(ycbcr[i][j]))
         return rgb
 
-    def compress_from_rgb(self, rgb: list[list[list[int]]]):
+    def compress_from_rgb(self, rgb: list[list[tuple[int]]]):
+
+        self.app0.set()
+        self.dqt.set()
+        self.sof0.set()
+        self.sos.set()
 
         height = len(rgb)
         width = len(rgb[0])
+
+        self.sof0.height = height
+        self.sof0.width = width
 
         ycbcr = []
         for i in range(height):
@@ -650,17 +658,13 @@ class JPEG:
                 mcu[idx] = new_comp
 
     def write(self, file: BinaryIO):
+        self.dht.set(self.mcu_list)
         write_bytes(file, 1, 0xff)
         write_bytes(file, 1, 0xd8)
-        self.app0.set()
         self.app0.write(file)
-        self.dqt.set()
         self.dqt.write(file)
-        self.sof0.set()
         self.sof0.write(file)
-        self.dht.set(jpeg.mcu_list)
         self.dht.write(file)
-        self.sos.set()
         self.sos.write(file)
         writer = BitWriter(file)
         Y_dc_map = map_symbol_to_coding(self.dht.dc_tables[0][0], self.dht.dc_tables[0][1])
@@ -728,6 +732,8 @@ if __name__ == '__main__':
     path3 = "assets/tmp.jpeg"
     with open(path2, 'rb') as f:
         jpeg.read(f)
+
+    # print(jpeg)
 
     rgb1 = jpeg.decompress_to_rgb()  # this will change data_unit into 8 x 8
     displayImage(rgb1)

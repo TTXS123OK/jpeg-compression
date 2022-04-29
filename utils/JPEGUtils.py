@@ -92,8 +92,8 @@ def YCbCr2RGB(pixel: list[int, int, int]) -> list[int, int, int]:
     return [R, G, B]
 
 
-def RGB2YCbCr(pixel: list[int, int, int]) -> list[int, int, int]:
-    R, G, B = pixel
+def RGB2YCbCr(pixel: tuple[int, int, int]) -> list[int, int, int]:
+    R, G, B = pixel[0], pixel[1], pixel[2]
     Cred = 0.299
     Cgreen = 0.587
     Cblue = 0.114
